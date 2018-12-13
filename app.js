@@ -9,14 +9,14 @@ var path = require('path');
 var cookieParser = require('cookie-parser');
 var lessMiddleware = require('less-middleware');
 var passport = require('passport');
-var passportLocalStrategy = require('passport-local').Strategy;
+var PassportLocalStrategy = require('passport-local').Strategy;
 var bcrypt = require('bcrypt');
 var minify = require('express-minify');
 var csurf = require('csurf');
 var multer = require('multer');
 var logger = require('morgan');
-var compress = require("compression");
-
+var compress = require('compression');
+var attempLogin = require('.lib/uti/login');
 var indexRouter = require('./routes/index');
 var usersRouter = require('./routes/users');
 
@@ -80,13 +80,61 @@ app.use(multer({
         rename : function(fieldname, filename){
           return filename + '_' + Date.now();
         }}
-      ));
+));
 
 
 passport.serializeUser(function(user,done){
    done(null,user);
 });
-passport.deserializeUser();
+passport.deserializeUser(function(obj,done){
+  done(null,obj);
+}); 
+
+passport.use(new PassportLocalStrategy(function(username, password, done){
+  var callbacks = {};
+
+  callbacks.getUserSucess = function(userRows){
+    var login_user = userRows[0];
+    if(!login_user){
+       // Message content will be replaced in future.
+       return done(null, false, { message: 'User or password is Invalid credential maybe.'});
+    }
+
+    var passwdCompareCallback = function(err, isMatch){
+        if(err) return done(err);
+        if(isMatch){
+          // login function should be called.
+          attempLogin.passwordAuthSuccess
+          return done(null, login_user);
+        }else{
+          // login function is failed should be called.
+          
+          return done(null, false, {message : 'User or password is Invalid credential maybe.'});
+        }
+    };
+
+    if(login_user.attempts > CONSTANTS.MAX_LOGIN_ATTEMPTS){
+       
+      if(config.account_lock_time_limit === 0 ){
+        return done(null, false, {message : 'Account Locked! Too many login attempts.'});
+      }else if(login_user.lockout_limit < config.account_lock_time_limit){
+        return done(null, false, {message : 'Account locked. Wait ' + parseInt(config.account_lock_time_limit - login_user.lockout_limit) + ' minutes to try again.'});
+      }else{
+        // login function should be called.
+        atttempLogin.resetAttemptCount();
+
+      }
+    }
+
+  };
+
+  callbacks.getUserFailure = function(error){
+      return done(null, false, {message : 'Database is error.'});
+  }
+
+  attempLogin.getAuthUser({username:username},callbacks);
+}));
+
 
 //TODO 
 app.use('/', indexRouter);
